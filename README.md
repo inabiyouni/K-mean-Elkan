@@ -1,24 +1,28 @@
 # K-mean-Elkan
 a k-means algorithm which employs accelerated Elkan method and can use different distance functions
 
-To run the program type:
+Three data set are provided for evaluation as follow with the following names:
+Birch: X_birch_m.txt, y_birch_m.txt
+KDDup: X_cup.txt, y_cup.txt
 
-python K_means_Elkan.py -itr1 first_file_name -itr2 first_data_classes -its1 second_file_name -its2 second_data_classes -f dist_function -a visualization -K number_of_clusters
+To run the program you can type:
+python Q3_Elkan argumnets
 
-which:
+results will be written displayed on the screen
 
-first_file_name, second_file_name: name of the first data file which should include data points in rows and features in columns
+Arguments for the command should be provided after these keys (some of them are optional:
 
-first_data_classes, second_data_classes: name of the first class file which should include real classes for each data point
+-itr1  : name of a file containing attribute values
+-itr2   : name of a file containing class values
 
-dist_function: name of the desired distance function which can be: "eucli" "cosine" "fun1" "fun2"
+OPTIONALS:
+-its1  : name of a file containing attribute values
+-its2   : name of a file containing class values
+-i    : itteration number for hard stoppping the program(DEFAULT: 34)
+-K	: number of desired cluster (DEFAULT: 3)
 
-visualization: To turn visualization off or on by choosing: "false" " true" respectively (it is recommended that use this option for data with only two clusters
+sample running commands:
 
-number_of_clusters: number of clusters which you need from data. If you skip this argument, the program with assign number of classes in the input class file
+python K_means_Elkan.py -itr1 X_birch_m.txt -itr2 y_birch_m.txt -i 34 -K 3 
 
-example:
-
-python K_means_Elkan.py -itr1 X_iris.txt -itr2 y_iris.txt -f eucli -a false -K 3
-
-python K_means_Elkan.py -itr1 X_data1.txt -itr2 y_data1.txt -its1 X_data2.txt -its2 y_data2.txt -f fun2 -a true
+python K_means_Elkan.py -itr1 X_birch_m.txt -itr2 y_birch_m.txt -i 325 -K 100 

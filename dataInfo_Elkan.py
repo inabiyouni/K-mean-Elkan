@@ -1,6 +1,6 @@
 class dataInfo_Elkan:
     def __init__(self, x, clsDist = None, n = None, a = None, u = None, l = None, s = None,
-                 N= None, K = None, k = None, dlta = None, itert = None, dist_Cnt = None):
+                 N= None, K = None, k = None, dlta = None, itert = None, dist_Cnt = None, cntrs_Dis = None):
         self.x = x
         self.clsDist = clsDist
         self.n = n

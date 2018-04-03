@@ -24,8 +24,25 @@ def getDistOfPnts(subMat):
             if maxRep == 0: maxRep = 1
     return dict, maxRep
 
+
 def initial_Cntrds(inst, max_min):
-    return (np.random.rand(inst.K, inst.k) * (max_min[0,:] - max_min[1,:])) + max_min[1,:]
+    inst.c = np.mean(inst.x[:, :-1], axis=0).reshape(1, inst.k)
+    next_mean = np.empty((1, inst.k))
+    for j in range(inst.K - 1):
+        max_Dist_to_Centrs = - np.inf
+        rnd_Draw = np.random.randint(inst.N, size=inst.N)
+        for i in rnd_Draw:
+            dis = (inst.x[i, :-1]).reshape(1, inst.k) - inst.c
+            dis_to_Cntrs = np.linalg.norm(dis, axis=1)
+            min_dist = dis_to_Cntrs
+            if dis_to_Cntrs.size > 1:
+                dis_to_Cntrs.sort()
+                min_dist = dis_to_Cntrs[0]
+            if min_dist > max_Dist_to_Centrs:
+                max_Dist_to_Centrs = min_dist
+                next_mean = (inst.x[i, :-1]).reshape(1, inst.k)
+        inst.c = np.append(inst.c, next_mean, axis=0)
+    #return (np.random.rand(inst.K, inst.k) * (max_min[0,:] - max_min[1,:])) + max_min[1,:]
 
 
 def normalizeData(inst):
@@ -78,6 +95,8 @@ def comput_S(inst, distFun, p):
     for j in range(0, inst.K - 1):
         for jper in range(j + 1, inst.K):
             dist = cal_Distance(inst.c[j, :], inst.c[jper, :], distFun, p, inst) / 2.0
+            inst.cntrs_Dis[j, jper] = dist
+            inst.cntrs_Dis[jper, j] = dist
             if c_prox_mat[j, jper] > dist:
                 c_prox_mat[j, jper] = dist
                 c_prox_mat[jper, j] = dist
@@ -99,11 +118,11 @@ def findMAxMin(inst):
 def assignPnts(inst, distFun, p):
     cnt_Pnt_Updt = 0
     for i in range(0, inst.N):
-        if inst.u[i] < inst.s[inst.a[i]]:
+        if inst.u[i] <= inst.s[inst.a[i]]:
             continue
         r = True
         for j in range(0, inst.K):
-            z = np.amax([inst.l[i, j], cal_Distance(inst.c[inst.a[i], :], inst.c[j, :], distFun, p, inst) / 2.0])
+            z = np.amax([inst.l[i, j], inst.cntrs_Dis[inst.a[i], j]])
             if j == inst.a[i] or inst.u[i] <= z:
                 continue
             if r:
@@ -117,7 +136,7 @@ def assignPnts(inst, distFun, p):
                 cnt_Pnt_Updt += 1
     return cnt_Pnt_Updt
 
-def K_means_Elkan(inst, distFun, epsl, p):
+def K_means_Elkan(inst, distFun, epsl, hard_Stop, p):
     if (inst.clsDist == None):
         inst.clsDist, _ = getDistOfPnts(inst.x[:,-1])
         if (inst.K == 0): inst.K = len(inst.clsDist)
@@ -127,17 +146,20 @@ def K_means_Elkan(inst, distFun, epsl, p):
         if animate:
             axes.set_xlim(max_min[1,0]-1, max_min[0,0]+1)
             axes.set_ylim(max_min[1,1]-1, max_min[0,1]+1)  # 10000)
-        centroids = initial_Cntrds(inst, max_min)
         inst.N = len(inst.x[:, 0])
-        inst.a = np.ones(inst.N, int)
+        initial_Cntrds(inst, max_min)
+        inst.a = np.zeros(inst.N, int)
         inst.u = np.ones(inst.N, float) * np.inf
         inst.l = np.zeros((inst.N, inst.K), float)
         inst.dlta = np.zeros(inst.K, float)
-        inst.c = centroids
+        inst.cntrs_Dis = np.ones((inst.K, inst.K), float)
         inst.itert = 0
         inst.dist_Cnt = 0
         print("iter | number of distance cal")
     print ('\r  {}  |     {:,}'.format(inst.itert, inst.dist_Cnt), end=""),
+    if inst.itert  == hard_Stop:
+        print("\nHard stop at the iteration number!")
+        return
     inst.itert += 1
     comput_S(inst, distFun, p)
     cnt_Pnt_Updt = assignPnts(inst, distFun, p)
@@ -145,24 +167,24 @@ def K_means_Elkan(inst, distFun, epsl, p):
         updateGraph(figN1, inst.c[:,0], inst.c[:,1], "Centroids")
         for j in range(0, inst.K):
             samData = inst.x[inst.a == j, :-1]
-            if j == 0: updateGraph(figN2, samData[:,0], samData[:,1], "Cluster", j)
-            elif j == 1: updateGraph(figN3, samData[:,0], samData[:,1], "Cluster", j)
+            updateGraph(eval('figN%d'% (j + 2)), samData[:,0], samData[:,1], "Cluster", j)
+            #lif j == 1: updateGraph(figN3, samData[:,0], samData[:,1], "Cluster", j)
     calCentroids(inst, distFun, p)
     updateBounds(inst)
     if (cnt_Pnt_Updt == 0):
         return
-    K_means_Elkan(inst, distFun, epsl, p)
+    K_means_Elkan(inst, distFun, epsl, hard_Stop, p)
     return
 
-def calAccuracy(inst):
+def calAccuracy(inst, clustrNo):
     purity = 0
-    realClasses = inst.x[:,-1]
-    newClasses = inst.a
-    for j in range(0, inst.K):
+    realClasses = inst.data[:,-1]
+    newClasses = inst.clusters[:, 1]
+    for j in range(0, clustrNo):
         cluster = realClasses[newClasses == j]
         _, majority = getDistOfPnts(cluster)
         purity += majority
-    print("\nTotal purity comparing the real classes are:\n%0.2f" %(purity / len(inst.x[:, 0])))
+    print("\nTotal purity comparing the real classes are:\n%0.2f" %(purity / len(inst.data[:, 0])))
 
 #main body of the program for loading data and
 # running a recursive tree function to learn from data
@@ -170,12 +192,13 @@ def calAccuracy(inst):
 #arguments setting
 args = iter(argv)
 next(args)
-clustrNo = 0
-n= 100
-k = 0
-p = 1
+clustrNo = 3
+n= 10000
+k = 3#1001
+p = 2
 epsl = 0.1
-animate = True#False
+hard_Stop = 34
+animate = False#True#
 if animate:
     #plot setting
     plt.show()
@@ -183,21 +206,24 @@ if animate:
     plt.ylabel('r')
     plt.title('Clustering by K-means')
     axes = plt.gca()
+    figN2, = axes.plot([], [], 'gx', markersize=4)  # marker='x', linestyle='--', color='g')
+    figN3, = axes.plot([], [], 'b*', markersize=4)  # marker='*', linestyle='--', color='b')
+    figN4, = axes.plot([], [], 'c+', markersize=4)  # marker='*', linestyle='--', color='b')
+    figN5, = axes.plot([], [], 'k-', markersize=4)  # marker='*', linestyle='--', color='b')
+    figN6, = axes.plot([], [], 'yo', markersize=4)  # marker='*', linestyle='--', color='b')
+    figN7, = axes.plot([], [], 'mx', markersize=4)  # marker='*', linestyle='--', color='b')
     figN1, = axes.plot([], [], 'r+', markersize=20)
-    figN2, = axes.plot([], [], 'gx', markersize=4)#marker='x', linestyle='--', color='g')
-    figN3, = axes.plot([], [], 'b*', markersize=4)#marker='*', linestyle='--', color='b')
     ax = plt.subplot(111)
     pos1 = ax.get_position() # get the original position
     pos2 = [pos1.x0 + 0.03, pos1.y0 + 0.02,  pos1.width / 1.0, pos1.height / 1.0]
     ax.set_position(pos2) # set a new position
 
 
-
 inputFileTr = ""
 inputClassesTr = ""
 inputFileTs = ""
 inputClassesTs = ""
-distFun = ""
+distFun = "eucli"
 for item in args:
     if item == "-K":
         clustrNo = int(next(args))
@@ -209,10 +235,8 @@ for item in args:
         inputFileTs = next(args)
     elif item == "-its2":
         inputClassesTs = next(args)
-    elif item == "-f":
-        distFun = next(args)
-    elif item == "-a":
-        animate = next(args)
+    elif item == "-i":
+        hard_Stop = int(next(args))
 
 if inputFileTr.lower() == "" or inputClassesTr == "":#or inputFileTs.lower() == "" or inputClassesTs.lower() == "" or
     print("You have NOT entered correct inputs!")
@@ -222,15 +246,16 @@ if distFun.lower() is ("city"):
 elif (distFun.lower() in ("fun1", "fun2", "cosine", "eucli", "")):
     p = 2
 
-#inputFileTr = "X_iris.txt"#X_data1_rand_2_150.txt"#X_train.txt"#"X_banknote.txt"#
-#inputClassesTr = "y_iris.txt"#y_data1_class_1_150.txt"#y_train.txt"#banknote.txt"#
-#inputFileTs = "X_test.txt"#"X_data2_rand_2_150.txt"#"
-#inputClassesTs = "y_test.txt"#y_data2_class_1_150.txt"#"
+#inputFileTr = "X_cup.txt"#iris.txt"#X_data1_rand_2_150.txt"#X_train.txt"#banknote.txt"#
+#inputClassesTr = "y_cup.txt"#iris.txt"#data1_class_1_150.txt"#y_train.txt"#banknote.txt"#
+#inputFileTs = "X_data2_rand_2_150.txt"#"X_test.txt"#"
+#inputClassesTs = "y_data2_class_1_150.txt"#"y_test.txt"#
 
-print("\nReading 1 set of data ...")
-clases = readData(inputClassesTr)
-data1 = readData(inputFileTr)
-data1 = np.append(data1, clases, axis=1)
+if inputClassesTr != "":
+    print("\nReading 1 set of data ...")
+    clases = readData(inputClassesTr)
+    data1 = readData(inputFileTr)
+    data1 = np.append(data1, clases, axis=1)
 
 if inputClassesTs != "":
     print("\nReading 2 set of data ...")
@@ -238,43 +263,42 @@ if inputClassesTs != "":
     data2 = readData(inputFileTs)
     data2 = np.append(data2, clases, axis=1)
 
-data = np.append(data1, data2, axis=0) if (inputClassesTs != "") else data1
-
-#result_file = open('K-means_%s_%d_%s.txt' %("rand", p, distFun),'a+')
-#for clustrNo in [3, 20, 100]:
-#    result_file.write('\n%sp = %d n = %d k = %d\n' % (distFun, p, n, clustrNo))
-#    result_file.write("iters    num of dist cal\n")
-#    for rept in range(20):
-#        if (os.path.isfile("data.npy")):
-#            data = np.load("data.npy")
-#        else:
-#            print("Generating new random data ...")
-#            data = np.random.random((n, k))
-#            np.save("data", data)
-#        if (distFun == ""): distFun = "eucli"
-
-#        print("\nRunning K-means algorithm ...")
-#        inst = dataInfo(data)
-#        inst.K = clustrNo
-#        K_means(inst, distFun.lower(), epsl, p)
-#        result_file.write("{} {:,}\n".format(inst.itert, inst.dist_Cnt))
-#        result_file.flush()
-
-#result_file.close()
-
+if inputClassesTr != "":
+    data = np.append(data1, data2, axis=0) if (inputClassesTs != "") else data1
 
 if (distFun == ""): distFun = "eucli"
-if (animate.lower() == "false"): animate = False
-else: animate = True
 
-print("\nRunning K-means algorithm ...")
-inst = dataInfo_Elkan(data)
-inst.K = clustrNo
-K_means_Elkan(inst, distFun.lower(), epsl, p)
+#print("\nRunning K-means algorithm ...")
+#inst = dataInfo_Elkan(data)
+#inst.K = clustrNo
+#K_means_Elkan(inst, distFun.lower(), epsl, p)
+
+result_file = open('K-mean-Elkan_%s_%d_%s.txt' %("rand", p, distFun),'a+')
+#for clustrNo in [3, 20, 100]:
+result_file.write('\n%sp = %d n = %d k = %d\n' % (distFun, p, n, clustrNo))
+result_file.write("iters    num of dist cal\n")
+
+for rept in range(6):
+    #if (os.path.isfile("data.npy")):
+    #    data = np.load("data.npy")
+    #else:
+    #    print("Generating new random data ...")
+    #    data = np.random.random((n, k))
+    #    np.save("data", data)
+    if (distFun == ""): distFun = "eucli"
+
+    print("\nRunning K-means_Elkan algorithm ...")
+    inst = dataInfo_Elkan(data)
+    inst.K = clustrNo
+    K_means_Elkan(inst, distFun.lower(), epsl, hard_Stop, p)
+    result_file.write("{} {:,}\n".format(inst.itert, inst.dist_Cnt))
+    result_file.flush()
+
+result_file.close()
+
 print ("\n")
 print("iterations: %d\nnumber of distance cal: %d" % (inst.itert, inst.dist_Cnt))
-
-calAccuracy(inst)
+#calAccuracy(inst, clustrNo)
 if animate:
     plt.legend()
     plt.savefig('result.png', bbox_inches='tight')
